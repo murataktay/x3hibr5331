@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#d4d5d7">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Dedem Mekatronik 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --red:#c4161c;
+    --red-dark:#9e1015;
+    --gray:#6d6e71;
+    --ink:#2b2f33;
+    --bg:#d4d5d7;
+    --top:max(18px,env(safe-area-inset-top));
+    --logo-h:64px;
+    --font:"Red Hat Display","Segoe UI",Helvetica,Arial,sans-serif;
+    --ease:cubic-bezier(.2,.8,.2,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:var(--bg);overflow:hidden;font-family:var(--font);color:var(--ink);
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+  button{font-family:inherit}
+  #stage{position:fixed;inset:0}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  .layer{position:absolute;inset:0;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .4s,visibility .4s}
+  .layer.show{opacity:1;visibility:visible}
+
+  /* ---------- Hotspot ---------- */
+  .hs{position:absolute;width:0;height:0;--stem:48px}
+  .hs.short{--stem:34px}
+  .hs .dot{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 0 10px rgba(0,0,0,.3);transition:transform .25s var(--ease)}
+  .hs .dot::before{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--gray);transition:background .25s}
+  .hs .dot b{display:none}
+  .hs .stem{position:absolute;left:-1px;width:2px;background:rgba(255,255,255,.95);box-shadow:0 0 4px rgba(0,0,0,.2)}
+  .hs .card{position:absolute;left:0;transform:translateX(-50%);display:flex;align-items:center;gap:8px;
+    background:rgba(255,255,255,.96);border-radius:10px;padding:8px 14px;box-shadow:0 3px 14px rgba(0,0,0,.18);
+    font-size:13px;font-weight:600;line-height:1.25;text-align:center;white-space:nowrap;color:var(--ink);transition:transform .25s var(--ease),box-shadow .25s}
+  .hs.up .stem{bottom:11px;height:var(--stem)}
+  .hs.up .card{bottom:calc(11px + var(--stem))}
+  .hs.down .stem{top:11px;height:var(--stem)}
+  .hs.down .card{top:calc(11px + var(--stem))}
+  /* Listeden üzerine gelince ilgili noktayı vurgula */
+  .hs.hl .dot{transform:scale(1.35)}
+  .hs.hl .dot::before{background:var(--red)}
+  .hs.hl .card{transform:translateX(-50%) scale(1.06);box-shadow:0 0 0 2px var(--red),0 6px 18px rgba(0,0,0,.22)}
+
+  .hs.live .dot::before{background:var(--red)}
+  .hs.live .dot::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:2px solid var(--red);opacity:0;animation:pulse 2s ease-out infinite}
+  @keyframes pulse{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.5);opacity:0}}
+  .hs.live .card{background:var(--red);color:#fff;padding:9px 16px 9px 14px}
+  .hs.live .card svg{width:16px;height:16px;flex:none}
+  .hs.live button{all:unset;position:absolute;pointer-events:auto;cursor:pointer}
+  .hs.live .hit{left:-30px;width:60px;top:-30px;height:60px;border-radius:50%}
+  .hs.live:hover .card,.hs.live:focus-within .card,.hs.live.hl .card{background:var(--red-dark);transform:translateX(-50%) scale(1.05);box-shadow:0 6px 18px rgba(0,0,0,.25)}
+  .hs.live button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+
+  /* ---------- Üst ---------- */
+  #logo{position:absolute;top:var(--top);left:max(24px,env(safe-area-inset-left));height:var(--logo-h);width:auto;pointer-events:none;z-index:5;
+    border-radius:10px;transition:background .5s,box-shadow .5s,padding .5s,margin .5s}
+  body.info-open #logo{background:rgba(255,255,255,.94);padding:6px 10px;margin:-6px 0 0 -10px;box-shadow:0 4px 16px rgba(0,0,0,.15);
+    height:calc(var(--logo-h) + 12px)}
+  #title{position:absolute;top:calc(var(--top) + var(--logo-h) / 2);right:max(28px,env(safe-area-inset-right));transform:translateY(-50%);
+    display:none;align-items:center;gap:10px;background:var(--gray);color:#fff;padding:10px 22px;border-radius:999px;
+    font-size:14px;font-weight:700;letter-spacing:.06em;box-shadow:0 3px 14px rgba(0,0,0,.18);white-space:nowrap;
+    opacity:0;visibility:hidden;transition:opacity .4s,visibility .4s;pointer-events:none}
+  #title::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--red)}
+  #title.show{opacity:1;visibility:visible}
+
+  #back{position:absolute;right:max(28px,env(safe-area-inset-right));bottom:max(28px,env(safe-area-inset-bottom));min-width:140px;min-height:48px;padding:0 36px;z-index:6;
+    border:2px solid var(--red);background:#fff;color:var(--red);font:700 14px/1 var(--font);letter-spacing:.14em;
+    cursor:pointer;opacity:0;visibility:hidden;transition:opacity .4s,visibility .4s,background .2s,color .2s}
+  #back.show{opacity:1;visibility:visible}
+  @media (hover:hover){#back:hover{background:var(--red);color:#fff}}
+  #back:active{background:var(--red);color:#fff}
+
+  /* ---------- Ana sahne alt bar ---------- */
+  #bar{position:absolute;left:max(24px,env(safe-area-inset-left));right:max(24px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));
+    display:flex;gap:3px;pointer-events:none;visibility:hidden;--head:84px}
+  #bar::before{content:"";position:absolute;left:-24px;right:-24px;top:-40px;bottom:-30px;z-index:-1;
+    background:linear-gradient(to bottom,rgba(240,240,241,0),rgba(240,240,241,.75) 45%,rgba(240,240,241,.85));
+    opacity:0;transition:opacity .6s}
+  #bar.show{visibility:visible}
+  #bar.show::before{opacity:1}
+  .col{flex:var(--w) 1 0;min-width:0;display:flex;flex-direction:column;text-align:left;border:0;background:none;color:inherit;padding:0}
+  .col .head{height:var(--head);display:flex;align-items:center;justify-content:center;gap:10px;text-align:center;color:#fff;
+    font-weight:700;font-size:17px;line-height:1.18;padding:0 14px;background:linear-gradient(100deg,#d21c22,#a51217);
+    opacity:0;transform:translateY(24px);transition:opacity .5s var(--ease),transform .6s var(--ease),filter .2s}
+  .col.gray .head{background:linear-gradient(100deg,#77787b,#5f6063)}
+  .col:first-child .head{border-radius:12px 0 0 0}
+  .col:last-child .head{border-radius:0 12px 34px 0}
+  .col ul{list-style:none;padding:14px 10px 0 12px}
+  .col li{display:flex;align-items:flex-start;gap:10px;font-size:14.5px;font-weight:500;line-height:1.25;color:#3a3f44;margin-bottom:11px;
+    opacity:0;transform:translateY(10px);transition:opacity .4s var(--ease),transform .5s var(--ease)}
+  .col li::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--red);margin-top:6px}
+  #bar.show .head{opacity:1;transform:none;transition-delay:var(--d)}
+  #bar.show li{opacity:1;transform:none;transition-delay:var(--d)}
+  /* Fonksiyonel sütun */
+  .col.live{cursor:pointer;pointer-events:auto}
+  .col.live .head svg{width:0;height:18px;flex:none;opacity:0;transition:width .25s var(--ease),opacity .25s}
+  .col.live .head::after{content:"";position:absolute}
+  .col.live:hover .head,.col.live:focus-visible .head,.col.live.hl .head{filter:brightness(1.12)}
+  .col.live:hover .head svg,.col.live:focus-visible .head svg,.col.live.hl .head svg{width:18px;opacity:1}
+  .col.live:hover li,.col.live.hl li{color:var(--ink)}
+  .col.live:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+  .col.live .head{position:relative}
+  .col.live .head i{position:absolute;right:10px;top:10px;width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 0 0 rgba(255,255,255,.8);animation:ping 2s infinite}
+  @keyframes ping{0%{box-shadow:0 0 0 0 rgba(255,255,255,.8)}70%,100%{box-shadow:0 0 0 8px rgba(255,255,255,0)}}
+
+  /* ---------- Alt sahne sol panel ---------- */
+  .info{position:absolute;left:0;top:0;bottom:0;width:clamp(270px,25vw,460px);z-index:4;color:#fff;
+    background:linear-gradient(180deg,rgba(196,22,28,.80),rgba(150,14,19,.76));
+    padding:calc(var(--top) + var(--logo-h) + 34px) 34px 30px max(34px,env(safe-area-inset-left));
+    overflow-y:auto;overscroll-behavior:contain;
+    transform:translateX(-102%);transition:transform .7s var(--ease);box-shadow:8px 0 30px rgba(0,0,0,.12)}
+  .info.show{transform:none}
+  .info h2{font-size:30px;font-weight:800;line-height:1.1;letter-spacing:-.005em;
+    opacity:0;transform:translateX(-24px);transition:opacity .5s var(--ease),transform .6s var(--ease)}
+  .info .vline{width:2px;height:0;background:#fff;margin:18px 0 18px 2px;transition:height .7s var(--ease)}
+  .info .intro{font-size:16px;font-weight:500;line-height:1.4;opacity:0;transform:translateY(10px);transition:opacity .5s var(--ease),transform .6s var(--ease)}
+  .info ul{list-style:none;margin-top:26px;display:flex;flex-direction:column;gap:6px}
+  .info li{display:grid;grid-template-columns:40px 1fr;gap:4px 14px;align-items:start;padding:10px 10px 10px 8px;border-radius:10px;
+    opacity:0;transform:translateX(-18px);transition:opacity .45s var(--ease),transform .55s var(--ease),background .2s}
+  .info li:hover,.info li.hl{background:rgba(255,255,255,.12)}
+  .info li svg{grid-row:span 2;width:38px;height:38px;stroke:#fff;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .info li b{font-size:16px;font-weight:700;line-height:1.2}
+  .info li span{font-size:14px;font-weight:400;line-height:1.38;opacity:.92}
+  .info.show h2{opacity:1;transform:none;transition-delay:.35s}
+  .info.show .vline{height:64px;transition-delay:.55s}
+  .info.show .intro{opacity:1;transform:none;transition-delay:.75s}
+  .info.show li{opacity:1;transform:none;transition-delay:var(--d)}
+
+  /* Ekran yüksekliği az olan dizüstüler */
+  @media (max-height:860px){
+    #bar{--head:66px}
+    .col .head{font-size:15px}
+    .col li{font-size:13px;margin-bottom:8px}
+    .col ul{padding-top:11px}
+    .info h2{font-size:26px}
+    .info .intro{font-size:14.5px}
+    .info.show .vline{height:44px}
+    .info ul{margin-top:16px;gap:2px}
+    .info li{padding:8px}
+    .info li b{font-size:15px}
+    .info li span{font-size:13px}
+  }
+
+  /* Tablet genişliği: panel dar, içerik sığsın */
+  @media (max-width:1200px){
+    .info{padding-left:22px;padding-right:20px}
+    .info h2{font-size:24px}
+    .info .intro{display:none}
+    .info.show .vline{height:36px}
+    .info .vline{margin:14px 0 6px 2px}
+    .info ul{margin-top:8px;gap:0}
+    .info li{grid-template-columns:30px 1fr;gap:2px 10px;padding:7px 6px}
+    .info li svg{width:30px;height:30px}
+    .info li b{font-size:14px}
+    .info li span{font-size:12.5px;line-height:1.32}
+  }
+
+  /* ---------- Dar ekran: numaralı noktalar + alt liste ---------- */
+  .legend{position:absolute;left:0;right:0;bottom:0;padding:12px max(14px,env(safe-area-inset-left)) max(16px,env(safe-area-inset-bottom));
+    display:none;flex-direction:column;gap:6px;background:linear-gradient(to top,rgba(212,213,215,.97) 70%,rgba(212,213,215,0));
+    opacity:0;visibility:hidden;transition:opacity .4s,visibility .4s}
+  .legend.show{opacity:1;visibility:visible}
+  .legend .row{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;min-height:40px;padding:0 12px;border-radius:10px;
+    background:rgba(255,255,255,.8);color:var(--ink);border:0;text-align:left;width:100%}
+  .legend .row i{flex:none;width:22px;height:22px;border-radius:50%;background:var(--gray);color:#fff;font:700 12px/22px Arial;text-align:center;font-style:normal}
+  .legend .row.live{background:var(--red);color:#fff;cursor:pointer}
+  .legend .row.live i{background:#fff;color:var(--red)}
+  .legend .row.live::after{content:"›";margin-left:auto;font-size:22px;line-height:1}
+  #hint{position:absolute;top:calc(var(--top) + var(--logo-h) + 10px);left:0;right:0;text-align:center;font-size:11px;font-weight:600;letter-spacing:.12em;color:#5b6168;display:none;pointer-events:none}
+
+  .compact{--logo-h:44px}
+  .compact .hs .stem,.compact .hs .card{display:none}
+  .compact .hs .dot b{display:block;position:absolute;inset:0;font:700 11px/22px Arial;text-align:center;color:#fff;z-index:1}
+  .compact .hs .dot::before{inset:0}
+  .compact .legend{display:flex}
+  .compact #hint{display:block}
+  .compact.in-sub #hint{display:none}
+  .compact #back{bottom:auto;top:calc(var(--top) + 2px);right:max(14px,env(safe-area-inset-right));min-height:40px;min-width:0;padding:0 18px}
+  .compact #title{display:flex;top:auto;right:auto;left:50%;bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--rows,5) * 46px + 18px);transform:translateX(-50%);font-size:12px;padding:8px 16px}
+  .compact #bar,.compact .info{display:none}
+
+  /* Telefon yatay / küçük tablet */
+  .small{--logo-h:44px}
+  .small .hs .card{font-size:11px;padding:6px 10px;border-radius:8px;white-space:normal;width:max-content;max-width:118px}
+  .small .hs.live .card{padding:7px 10px}
+  .small .hs{--stem:30px}
+  .small .hs.short{--stem:24px}
+  .small #back{min-height:44px;padding:0 24px;min-width:110px}
+  .small #bar{display:none}
+  .small .info{width:26vw;min-width:0;padding:calc(var(--top) + var(--logo-h) + 16px) 14px 14px max(16px,env(safe-area-inset-left))}
+  .small .info h2{font-size:18px}
+  .small .info .intro,.small .info li span,.small .info li svg{display:none}
+  .small .info.show .vline{height:24px}
+  .small .info .vline{margin:10px 0}
+  .small .info ul{margin-top:4px;gap:0}
+  .small .info li{grid-template-columns:1fr;padding:6px 4px}
+  .small .info li b{font-size:12.5px}
+
+  #loader{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:var(--bg);transition:opacity .5s;z-index:10}
+  #loader.hide{opacity:0;pointer-events:none}
+  #loader img{height:90px;width:auto}
+  #loader .bar{width:220px;height:3px;background:#bbb;border-radius:2px;overflow:hidden}
+  #loader .bar i{display:block;height:100%;width:0;background:var(--red);transition:width .15s}
+  #loader small{font-size:12px;font-weight:600;letter-spacing:.15em;color:#5b6168}
+  #wait{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12px;font-weight:600;letter-spacing:.15em;color:#5b6168;opacity:0;transition:opacity .3s;pointer-events:none}
+  #wait.show{opacity:1}
+
+  @media (prefers-reduced-motion:reduce){
+    *{transition-duration:.01s !important;animation:none !important}
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="layers"></div>
+  <div id="bar"></div>
+  <div id="panels"></div>
+  <img id="logo" src="01z0uf.png" alt="Dedem Mekatronik">
+  <div id="title"></div>
+  <div id="hint">DAHA İYİ GÖRÜNÜM İÇİN YATAY ÇEVİRİN</div>
+  <button id="back">GERİ</button>
+  <div id="wait">YÜKLENİYOR…</div>
+  <div id="loader"><img src="01z0uf.png" alt=""><div class="bar"><i id="prog"></i></div><small id="ptext">YÜKLENİYOR</small></div>
+  <div id="videos" hidden></div>
+</div>
+
+<!-- Sahne ağacı, butonlar ve metinler bu dosyada: -->
+<script src="54z6zg.js"></script>
+<script>
+const TREE = window.SCENE_TREE;
+const SCENES = TREE.scenes, FILES = TREE.sequences;
+const MEDIA = "my0e6t/";
+
+// Kalite: masaüstü 2560x1440, dokunmatik cihazlar 1280x720. ?q=hq veya ?q=m ile zorlanabilir.
+const params = new URLSearchParams(location.search);
+const coarse = matchMedia("(pointer:coarse)").matches;
+const Q = (params.get("q") || (coarse ? "m" : "hq")) === "m" ? "m" : "h";
+const SAFE_X = [0.03, 0.97];
+
+const ICONS = {
+  sorter: '<svg viewBox="0 0 40 40"><path d="M3 28h20"/><path d="M23 28l12-10"/><path d="M23 28h14"/><circle cx="7" cy="31" r="1.6"/><circle cx="14" cy="31" r="1.6"/><circle cx="21" cy="31" r="1.6"/><rect x="6" y="19" width="8" height="7" rx="1"/><path d="M30 12l5 6-7 1"/></svg>',
+  robot:  '<svg viewBox="0 0 40 40"><path d="M8 36h14"/><path d="M11 36v-5h8v5"/><path d="M15 31V20l10-8"/><circle cx="15" cy="20" r="2.4"/><circle cx="25" cy="12" r="2.4"/><path d="M25 12l7 4"/><path d="M32 16v4M29 20h6"/><rect x="28" y="24" width="8" height="6" rx="1"/></svg>',
+  strap:  '<svg viewBox="0 0 40 40"><rect x="8" y="14" width="24" height="16" rx="1.5"/><path d="M5 34V8h30v26"/><path d="M20 8v6M20 30v4"/><path d="M8 34h24"/><path d="M12 22h16"/></svg>',
+  wrap:   '<svg viewBox="0 0 40 40"><rect x="12" y="10" width="16" height="20" rx="1.5"/><path d="M12 15h16M12 20h16M12 25h16"/><ellipse cx="20" cy="33" rx="13" ry="3"/><path d="M33 8v22"/><rect x="31" y="14" width="4" height="7" rx="1"/></svg>',
+  secure: '<svg viewBox="0 0 40 40"><rect x="8" y="12" width="18" height="18" rx="1.5"/><path d="M8 34h18M10 30v4M24 30v4"/><rect x="13" y="16" width="8" height="5" rx=".5"/><path d="M27 20l3 3 6-7"/></svg>',
+  speed:  '<svg viewBox="0 0 40 40"><path d="M6 28a14 14 0 1 1 28 0"/><path d="M20 28l7-9"/><circle cx="20" cy="28" r="2"/><path d="M10 28h2M28 28h2M20 14v2M12.5 18l1.5 1.5"/></svg>',
+  film:   '<svg viewBox="0 0 40 40"><rect x="6" y="9" width="9" height="22" rx="4.5"/><path d="M10.5 9h16a3 3 0 0 1 3 3v16a3 3 0 0 1-3 3h-16"/><path d="M29.5 14l5 2v12l-5 2"/><circle cx="10.5" cy="20" r="1.6"/></svg>',
+  auto:   '<svg viewBox="0 0 40 40"><path d="M32 20a12 12 0 0 1-21.5 7.3"/><path d="M8 20a12 12 0 0 1 21.5-7.3"/><path d="M29.5 7v6h-6M10.5 33v-6h6"/><path d="M17 16l7 4-7 4z"/></svg>',
+  link:   '<svg viewBox="0 0 40 40"><rect x="4" y="15" width="11" height="10" rx="2"/><rect x="25" y="6" width="11" height="10" rx="2"/><rect x="25" y="24" width="11" height="10" rx="2"/><path d="M15 20h5M20 11v18M20 11h5M20 29h5"/></svg>',
+  specs:  '<svg viewBox="0 0 40 40"><rect x="10" y="8" width="16" height="22" rx="1.5"/><path d="M6 34h24M8 30v4M28 30v4"/><path d="M33 8v22M31 8h4M31 30h4"/><path d="M14 14h8M14 19h8M14 24h5"/></svg>',
+};
+
+
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const stage = document.getElementById("stage");
+const layersEl = document.getElementById("layers");
+const panelsEl = document.getElementById("panels");
+const back = document.getElementById("back");
+const wait = document.getElementById("wait");
+const titleEl = document.getElementById("title");
+const barEl = document.getElementById("bar");
+const vidBox = document.getElementById("videos");
+let frameW = 2560, frameH = 1440;
+let drawRect = { x: 0, y: 0, w: 0, h: 0 };
+
+/* ---------- Videolar ---------- */
+const vids = {};
+function vid(seq, rev) {
+  const key = seq + (rev ? ":r" : "");
+  if (vids[key]) return vids[key];
+  const v = document.createElement("video");
+  v.muted = true; v.defaultMuted = true; v.playsInline = true;
+  v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
+  v.preload = "auto";
+  v.src = MEDIA + FILES[seq] + "-" + Q + (rev ? "r" : "") + ".mp4";
+  vidBox.appendChild(v);
+  v.load();
+  return vids[key] = v;
+}
+// Video oynatılabilir hale gelene kadar bekle
+function ready(v, level = 3) {
+  return new Promise(res => {
+    if (v.readyState >= level) return res();
+    const ok = () => { if (v.readyState >= level) { v.removeEventListener("canplay", ok); v.removeEventListener("canplaythrough", ok); v.removeEventListener("loadeddata", ok); res(); } };
+    v.addEventListener("canplay", ok); v.addEventListener("canplaythrough", ok); v.addEventListener("loadeddata", ok);
+    v.addEventListener("error", () => res(), { once: true });
+  });
+}
+const vidsOf = id => {
+  const sc = SCENES[id], out = [];
+  if (sc.enter) out.push(vid(sc.enter, false), vid(sc.enter, true));
+  out.push(vid(sc.loop, false));
+  return out;
+};
+function preloadChildren(id) {
+  SCENES[id].hotspots.forEach(h => { if (h.go && SCENES[h.go]) vidsOf(h.go); });
+}
+
+/* ---------- Oynatıcı ---------- */
+// active: ekrana çizilen video. Yeni video ilk karesini verene kadar eskisi ekranda kalır (siyah kare olmaz).
+let active = null, cur = null, token = 0;
+function play(seq, { loop = false, reverse = false, start = 0, onEnd = null } = {}) {
+  const my = ++token;
+  const v = vid(seq, reverse);
+  const prev = active;
+  cur = { seq, reverse, v };
+  v.loop = loop;
+  v.onended = null;
+  if (!loop && onEnd) v.onended = () => { if (my === token) onEnd(); };
+  const go = () => {
+    try { v.currentTime = Math.max(0, start); } catch (e) {}
+    const p = v.play(); if (p && p.catch) p.catch(() => {});
+    const swap = () => {
+      if (my !== token) return;
+      active = v;
+      if (prev && prev !== v) { prev.pause(); prev.onended = null; }
+    };
+    if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(swap);
+    else v.addEventListener("playing", swap, { once: true });
+  };
+  if (v.readyState >= 1) go(); else v.addEventListener("loadedmetadata", go, { once: true });
+}
+let lastT = -1;
+function drawActive(force) {
+  const v = active;
+  if (!v || v.readyState < 2) return;
+  if (!force && v.currentTime === lastT && !v.paused) {} // yeni kare yoksa da çizmek sorun değil
+  lastT = v.currentTime;
+  const vw = innerWidth, vh = innerHeight, r = drawRect;
+  const gaps = r.x > 0 || r.y > 0 || r.x + r.w < vw || r.y + r.h < vh;
+  if (gaps) { ctx.fillStyle = BG; ctx.fillRect(0, 0, vw, vh); }
+  ctx.drawImage(v, r.x, r.y, r.w, r.h);
+  if (r.y > 0) fade(r.y, Math.min(60, r.h * 0.15), 1);
+  if (r.y + r.h < vh) fade(r.y + r.h, Math.min(60, r.h * 0.15), -1);
+}
+function tick() { requestAnimationFrame(tick); drawActive(false); }
+const BG = "#d4d5d7";
+function fade(edge, len, dir) {
+  const g = ctx.createLinearGradient(0, edge, 0, edge + len * dir);
+  g.addColorStop(0, BG); g.addColorStop(1, "rgba(212,213,215,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, dir > 0 ? edge - 1 : edge - len, innerWidth, len + 1);
+}
+
+/* ---------- Sahne arayüzü oluştur ---------- */
+const arrowSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>';
+const plain = t => t.replace(/<br>/g, " ");
+const layers = {}, legends = {}, panels = {};
+function linkHover(el, id) {
+  const hs = () => document.getElementById("hs-" + id);
+  el.addEventListener("mouseenter", () => { hs() && hs().classList.add("hl"); el.classList.add("hl"); });
+  el.addEventListener("mouseleave", () => { hs() && hs().classList.remove("hl"); el.classList.remove("hl"); });
+}
+
+for (const id in SCENES) {
+  const sc = SCENES[id];
+  const layer = document.createElement("div");
+  layer.className = "layer";
+  const legend = document.createElement("div");
+  legend.className = "legend";
+  sc.hotspots.forEach((h, i) => {
+    const live = h.go && SCENES[h.go];
+    const el = document.createElement("div");
+    el.className = "hs " + h.side + (live ? " live" : "") + (h.short ? " short" : "");
+    el.id = "hs-" + h.id;
+    el.innerHTML =
+      `<span class="dot"><b>${i + 1}</b></span><span class="stem"></span>` +
+      `<span class="card">${live ? arrowSvg : ""}<span>${h.label}</span></span>`;
+    if (live) {
+      const hit = document.createElement("button");
+      hit.className = "hit"; hit.setAttribute("aria-label", plain(h.label));
+      const cardHit = document.createElement("button");
+      cardHit.className = "cardhit"; cardHit.tabIndex = -1; cardHit.setAttribute("aria-hidden", "true");
+      el.append(hit, cardHit);
+      [hit, cardHit].forEach(b => b.addEventListener("click", () => goTo(h.go)));
+    }
+    layer.appendChild(el);
+    const row = document.createElement(live ? "button" : "div");
+    row.className = "row" + (live ? " live" : "");
+    row.innerHTML = `<i>${i + 1}</i><span>${plain(h.label)}</span>`;
+    if (live) row.addEventListener("click", () => goTo(h.go));
+    legend.appendChild(row);
+  });
+  layersEl.appendChild(layer);
+  stage.insertBefore(legend, titleEl);
+  layers[id] = layer; legends[id] = legend;
+
+  // Sol bilgi paneli
+  if (sc.info) {
+    const inf = sc.info;
+    const items = inf.listFromHotspots
+      ? sc.hotspots.map(h => ({ icon: h.icon, name: plain(h.label), desc: h.desc, hs: h.id }))
+      : (inf.items || []);
+    const aside = document.createElement("aside");
+    aside.className = "info"; aside.setAttribute("aria-label", plain(inf.title));
+    aside.innerHTML =
+      `<h2>${inf.title}</h2><div class="vline"></div>${inf.intro ? `<p class="intro">${inf.intro}</p>` : ""}` +
+      `<ul>${items.map((it, k) =>
+        `<li ${it.hs ? `data-hs="${it.hs}"` : ""} style="--d:${(0.9 + k * 0.12).toFixed(2)}s">${ICONS[it.icon] || ""}<b>${it.name}</b><span>${it.desc || ""}</span></li>`
+      ).join("")}</ul>`;
+    aside.querySelectorAll("li[data-hs]").forEach(li => linkHover(li, li.dataset.hs));
+    panelsEl.appendChild(aside);
+    panels[id] = aside;
+  }
+}
+
+/* ---------- Ana sahne alt bar ---------- */
+for (const id in SCENES) {
+  if (!SCENES[id].bottomBar) continue;
+  SCENES[id].hotspots.forEach((h, i) => {
+    if (!h.bar) return;
+    const live = h.go && SCENES[h.go];
+    const col = document.createElement(live ? "button" : "div");
+    col.className = "col" + (h.bar.color === "gray" ? " gray" : "") + (live ? " live" : "");
+    col.style.setProperty("--w", h.bar.w || 300);
+    const t = h.bar.title || plain(h.label).replace(" (", "<br>(");
+    col.innerHTML =
+      `<div class="head" style="--d:${(0.15 + i * 0.09).toFixed(2)}s"><span>${t}</span>${live ? arrowSvg + "<i></i>" : ""}</div>` +
+      `<ul>${(h.bar.items || []).map((x, k) => `<li style="--d:${(0.6 + i * 0.09 + k * 0.08).toFixed(2)}s">${x}</li>`).join("")}</ul>`;
+    if (live) { col.setAttribute("aria-label", plain(h.label)); col.addEventListener("click", () => goTo(h.go)); }
+    linkHover(col, h.id);
+    barEl.appendChild(col);
+  });
+  barEl.dataset.scene = id;
+}
+
+/* ---------- Görünen sahne arayüzü ---------- */
+let shown = null;
+function setUI(id) {
+  shown = id;
+  for (const s in layers) {
+    layers[s].classList.toggle("show", s === id);
+    legends[s].classList.toggle("show", s === id);
+  }
+  for (const s in panels) {
+    if (s === id) panels[s].scrollTop = 0;
+    panels[s].classList.toggle("show", s === id);
+  }
+  barEl.classList.toggle("show", !!id && barEl.dataset.scene === id);
+  const sc = id && SCENES[id];
+  if (sc && sc.title) titleEl.textContent = sc.title.toUpperCase();
+  titleEl.classList.toggle("show", !!(sc && sc.title));
+  document.body.style.setProperty("--rows", sc ? sc.hotspots.length : 5);
+  document.body.classList.toggle("info-open", !!(id && panels[id]));
+  document.body.classList.toggle("in-sub", !!(sc && sc.parent));
+  document.querySelectorAll(".hl").forEach(e => e.classList.remove("hl"));
+  if (id) requestAnimationFrame(sizeCardHits);
+}
+
+/* ---------- Yerleşim ---------- */
+function layout() {
+  const vw = innerWidth, vh = innerHeight;
+  const portrait = vh > vw;
+  const compact = portrait && vw < 760;
+  document.body.classList.toggle("compact", compact);
+  document.body.classList.toggle("small", !compact && (vw < 1000 || vh < 560));
+
+  const cover = Math.max(vw / frameW, vh / frameH);
+  const fitSafe = vw / ((SAFE_X[1] - SAFE_X[0]) * frameW);
+  const s = Math.min(cover, fitSafe);
+  const w = frameW * s, h = frameH * s;
+  const cx = ((SAFE_X[0] + SAFE_X[1]) / 2) * w;
+  let x = vw / 2 - cx;
+  if (w >= vw) x = Math.min(0, Math.max(vw - w, x));
+  let y = (vh - h) / 2;
+  if (compact) y -= Math.min(vh * 0.12, Math.max(0, (vh - h) / 2 - 20));
+  drawRect = { x, y, w, h };
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  for (const id in SCENES) SCENES[id].hotspots.forEach(hp => {
+    const el = document.getElementById("hs-" + hp.id);
+    el.style.left = (drawRect.x + hp.x * drawRect.w) + "px";
+    el.style.top = (drawRect.y + hp.y * drawRect.h) + "px";
+  });
+  sizeCardHits();
+  drawActive(true);
+}
+function sizeCardHits() {
+  document.querySelectorAll(".hs.live").forEach(el => {
+    const card = el.querySelector(".card"), b = el.querySelector(".cardhit");
+    if (!card || !b) return;
+    const er = el.getBoundingClientRect(), cr = card.getBoundingClientRect();
+    if (!cr.width) { b.style.width = "0px"; return; }
+    const top = Math.min(cr.top, er.top) - er.top - 8, bottom = Math.max(cr.bottom, er.bottom) - er.top + 8;
+    Object.assign(b.style, { left: (cr.left - er.left - 8) + "px", top: top + "px", width: (cr.width + 16) + "px", height: (bottom - top) + "px" });
+  });
+}
+
+
+/* ---------- Ağaçta gezinme ---------- */
+let sceneId = null, moving = false, nav = 0;
+function arrive(id) {
+  sceneId = id; moving = false;
+  setUI(id);
+  back.classList.toggle("show", !!SCENES[id].parent);
+  play(SCENES[id].loop, { loop: true });
+  preloadChildren(id);
+}
+async function goTo(id) {
+  if (moving || !SCENES[id]) return;
+  moving = true; const my = ++nav;
+  setUI(null);
+  back.classList.remove("show");
+  const sc = SCENES[id];
+  const t = setTimeout(() => wait.classList.add("show"), 250);
+  await Promise.all([ready(vid(sc.enter, false)), ready(vid(sc.loop, false), 2)]);
+  clearTimeout(t); wait.classList.remove("show");
+  if (my !== nav) return;
+  sceneId = id;
+  back.classList.add("show");
+  play(sc.enter, { onEnd: () => { if (my === nav) arrive(id); } });
+}
+function goBack() {
+  const sc = SCENES[sceneId];
+  if (!sc || !sc.parent) return;
+  const my = ++nav;
+  moving = true;
+  back.classList.remove("show");
+  setUI(null);
+  // Giriş videosu oynarken basıldıysa, ters videoda aynı noktadan başla
+  let start = 0;
+  if (cur && cur.seq === sc.enter && !cur.reverse && cur.v.duration) start = Math.max(0, cur.v.duration - cur.v.currentTime);
+  const parent = sc.parent;
+  play(sc.enter, { reverse: true, start, onEnd: () => { if (my === nav) arrive(parent); } });
+}
+back.addEventListener("click", goBack);
+addEventListener("resize", layout);
+addEventListener("orientationchange", () => setTimeout(layout, 200));
+// Sekme arka plandan dönünce oynatmayı sürdür
+document.addEventListener("visibilitychange", () => { if (!document.hidden && active && active.paused && cur && cur.v === active && (active.loop || active.currentTime < active.duration)) active.play().catch(() => {}); });
+
+(async function init() {
+  const rootId = Object.keys(SCENES).find(k => !SCENES[k].parent);
+  layout();
+  requestAnimationFrame(tick);
+  const v0 = vid(SCENES[rootId].loop, false);
+  const prog = document.getElementById("prog");
+  const upd = () => { try { if (v0.duration && v0.buffered.length) prog.style.width = Math.min(100, v0.buffered.end(v0.buffered.length - 1) / v0.duration * 100) + "%"; } catch (e) {} };
+  v0.addEventListener("progress", upd);
+  await ready(v0, 3);
+  if (v0.videoWidth) { frameW = v0.videoWidth; frameH = v0.videoHeight; layout(); }
+  prog.style.width = "100%";
+  arrive(rootId);
+  setTimeout(() => document.getElementById("loader").classList.add("hide"), 150);
+})();
+</script>
+</body>
+</html>
