@@ -275,27 +275,48 @@ let frameW = 2560, frameH = 1440;
 let drawRect = { x: 0, y: 0, w: 0, h: 0 };
 
 /* ---------- Videolar ---------- */
+// Her video önce TAMAMEN indirilir (blob), sonra oynatılır: akış sırasında internet beklemesi olmaz.
+// Yerelde (file://) indirme yapılamazsa doğrudan dosyadan oynatılır.
+const blobs = {};
+function fetchBlob(url, onProg) {
+  if (blobs[url]) return blobs[url];
+  return blobs[url] = (async () => {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(r.status);
+      const total = +r.headers.get("content-length") || 0;
+      if (!onProg || !r.body || !total) return URL.createObjectURL(await r.blob());
+      const reader = r.body.getReader(), chunks = []; let got = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value); got += value.length; onProg(Math.min(1, got / total));
+      }
+      return URL.createObjectURL(new Blob(chunks, { type: "video/mp4" }));
+    } catch (e) { return url; }
+  })();
+}
 const vids = {};
-function vid(seq, rev) {
+function vid(seq, rev, onProg) {
   const key = seq + (rev ? ":r" : "");
   if (vids[key]) return vids[key];
   const v = document.createElement("video");
   v.muted = true; v.defaultMuted = true; v.playsInline = true;
   v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
   v.preload = "auto";
-  v.src = MEDIA + FILES[seq] + "-" + Q + (rev ? "r" : "") + ".mp4";
   vidBox.appendChild(v);
-  v.load();
+  const url = MEDIA + FILES[seq] + "-" + Q + (rev ? "r" : "") + ".mp4";
+  v._src = fetchBlob(url, onProg).then(u => { v.src = u; v.load(); });
   return vids[key] = v;
 }
-// Video oynatılabilir hale gelene kadar bekle
+// Video indirilip oynatılabilir hale gelene kadar bekle
 function ready(v, level = 3) {
-  return new Promise(res => {
+  return v._src.then(() => new Promise(res => {
     if (v.readyState >= level) return res();
-    const ok = () => { if (v.readyState >= level) { v.removeEventListener("canplay", ok); v.removeEventListener("canplaythrough", ok); v.removeEventListener("loadeddata", ok); res(); } };
-    v.addEventListener("canplay", ok); v.addEventListener("canplaythrough", ok); v.addEventListener("loadeddata", ok);
+    const ok = () => { if (v.readyState >= level) { ["canplay", "canplaythrough", "loadeddata"].forEach(e => v.removeEventListener(e, ok)); res(); } };
+    ["canplay", "canplaythrough", "loadeddata"].forEach(e => v.addEventListener(e, ok));
     v.addEventListener("error", () => res(), { once: true });
-  });
+  }));
 }
 const vidsOf = id => {
   const sc = SCENES[id], out = [];
@@ -303,6 +324,7 @@ const vidsOf = id => {
   out.push(vid(sc.loop, false));
   return out;
 };
+// Bir sahnede beklerken, oradan gidilebilecek alt sahnelerin videolarını arka planda indir
 function preloadChildren(id) {
   SCENES[id].hotspots.forEach(h => { if (h.go && SCENES[h.go]) vidsOf(h.go); });
 }
@@ -329,14 +351,14 @@ function play(seq, { loop = false, reverse = false, start = 0, onEnd = null } = 
     if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(swap);
     else v.addEventListener("playing", swap, { once: true });
   };
-  if (v.readyState >= 1) go(); else v.addEventListener("loadedmetadata", go, { once: true });
+  v._src.then(() => { if (my !== token) return; if (v.readyState >= 1) go(); else v.addEventListener("loadedmetadata", go, { once: true }); });
 }
-let lastT = -1;
+let lastT = -1, lastV = null;
 function drawActive(force) {
   const v = active;
   if (!v || v.readyState < 2) return;
-  if (!force && v.currentTime === lastT && !v.paused) {} // yeni kare yoksa da çizmek sorun değil
-  lastT = v.currentTime;
+  if (!force && v === lastV && v.currentTime === lastT) return; // yeni kare yoksa tekrar çizme
+  lastT = v.currentTime; lastV = v;
   const vw = innerWidth, vh = innerHeight, r = drawRect;
   const gaps = r.x > 0 || r.y > 0 || r.x + r.w < vw || r.y + r.h < vh;
   if (gaps) { ctx.fillStyle = BG; ctx.fillRect(0, 0, vw, vh); }
@@ -549,10 +571,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && ac
   const rootId = Object.keys(SCENES).find(k => !SCENES[k].parent);
   layout();
   requestAnimationFrame(tick);
-  const v0 = vid(SCENES[rootId].loop, false);
   const prog = document.getElementById("prog");
-  const upd = () => { try { if (v0.duration && v0.buffered.length) prog.style.width = Math.min(100, v0.buffered.end(v0.buffered.length - 1) / v0.duration * 100) + "%"; } catch (e) {} };
-  v0.addEventListener("progress", upd);
+  const v0 = vid(SCENES[rootId].loop, false, p => { prog.style.width = (p * 100) + "%"; });
   await ready(v0, 3);
   if (v0.videoWidth) { frameW = v0.videoWidth; frameH = v0.videoHeight; layout(); }
   prog.style.width = "100%";
