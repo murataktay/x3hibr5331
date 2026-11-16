@@ -26,7 +26,13 @@
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
   button{font-family:inherit}
   #stage{position:fixed;inset:0}
-  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  /* Videolar doğrudan tarayıcının video katmanında gösterilir (en akıcı yöntem) */
+  #videos{position:absolute;inset:0;overflow:hidden;z-index:0}
+  #videos video{position:absolute;left:0;top:0;opacity:0;pointer-events:none;object-fit:fill;background:transparent}
+  #videos video.on{opacity:1;z-index:2}
+  .vfade{position:absolute;left:0;right:0;pointer-events:none;z-index:3;display:none}
+  .vfade.top{background:linear-gradient(to bottom,#d4d5d7,rgba(212,213,215,0))}
+  .vfade.bot{background:linear-gradient(to top,#d4d5d7,rgba(212,213,215,0))}
 
   .layer{position:absolute;inset:0;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .4s,visibility .4s}
   .layer.show{opacity:1;visibility:visible}
@@ -221,7 +227,7 @@
 </head>
 <body>
 <div id="stage">
-  <canvas id="cv"></canvas>
+  <div id="videos"><div class="vfade top"></div><div class="vfade bot"></div></div>
   <div id="layers"></div>
   <div id="bar"></div>
   <div id="panels"></div>
@@ -231,7 +237,6 @@
   <button id="back">GERİ</button>
   <div id="wait">YÜKLENİYOR…</div>
   <div id="loader"><img src="01z0uf.png" alt=""><div class="bar"><i id="prog"></i></div><small id="ptext">YÜKLENİYOR</small></div>
-  <div id="videos" hidden></div>
 </div>
 
 <!-- Sahne ağacı, butonlar ve metinler bu dosyada: -->
@@ -261,8 +266,6 @@ const ICONS = {
 };
 
 
-const cv = document.getElementById("cv");
-const ctx = cv.getContext("2d");
 const stage = document.getElementById("stage");
 const layersEl = document.getElementById("layers");
 const panelsEl = document.getElementById("panels");
@@ -305,6 +308,7 @@ function vid(seq, rev, onProg) {
   v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
   v.preload = "auto";
   vidBox.appendChild(v);
+  placeVideo(v);
   const url = MEDIA + FILES[seq] + "-" + Q + (rev ? "r" : "") + ".mp4";
   v._src = fetchBlob(url, onProg).then(u => { v.src = u; v.load(); });
   return vids[key] = v;
@@ -345,34 +349,27 @@ function play(seq, { loop = false, reverse = false, start = 0, onEnd = null } = 
     const p = v.play(); if (p && p.catch) p.catch(() => {});
     const swap = () => {
       if (my !== token) return;
+      if (active === v && v.classList.contains("on")) return;
       active = v;
-      if (prev && prev !== v) { prev.pause(); prev.onended = null; }
+      v.classList.add("on");
+      if (prev && prev !== v) { prev.classList.remove("on"); prev.pause(); prev.onended = null; }
     };
     if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(swap);
     v.addEventListener("playing", () => setTimeout(swap, 120), { once: true }); // yedek
   };
   v._src.then(() => { if (my !== token) return; if (v.readyState >= 1) go(); else v.addEventListener("loadedmetadata", go, { once: true }); });
 }
-let lastT = -1, lastV = null;
-function drawActive(force) {
-  const v = active;
-  if (!v || v.readyState < 2) return;
-  if (!force && v === lastV && v.currentTime === lastT) return; // yeni kare yoksa tekrar çizme
-  lastT = v.currentTime; lastV = v;
-  const vw = innerWidth, vh = innerHeight, r = drawRect;
-  const gaps = r.x > 0 || r.y > 0 || r.x + r.w < vw || r.y + r.h < vh;
-  if (gaps) { ctx.fillStyle = BG; ctx.fillRect(0, 0, vw, vh); }
-  ctx.drawImage(v, r.x, r.y, r.w, r.h);
-  if (r.y > 0) fade(r.y, Math.min(60, r.h * 0.15), 1);
-  if (r.y + r.h < vh) fade(r.y + r.h, Math.min(60, r.h * 0.15), -1);
+// Videoları ve kenar geçişlerini sahne alanına yerleştir
+function placeVideo(v) {
+  const r = drawRect;
+  Object.assign(v.style, { left: r.x + "px", top: r.y + "px", width: r.w + "px", height: r.h + "px" });
 }
-function tick() { requestAnimationFrame(tick); drawActive(false); }
-const BG = "#d4d5d7";
-function fade(edge, len, dir) {
-  const g = ctx.createLinearGradient(0, edge, 0, edge + len * dir);
-  g.addColorStop(0, BG); g.addColorStop(1, "rgba(212,213,215,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, dir > 0 ? edge - 1 : edge - len, innerWidth, len + 1);
+function placeVideos() {
+  vidBox.querySelectorAll("video").forEach(placeVideo);
+  const r = drawRect, len = Math.min(60, r.h * 0.15);
+  const top = vidBox.querySelector(".vfade.top"), bot = vidBox.querySelector(".vfade.bot");
+  Object.assign(top.style, { display: r.y > 0 ? "block" : "none", top: (r.y - 1) + "px", height: len + "px" });
+  Object.assign(bot.style, { display: r.y + r.h < innerHeight ? "block" : "none", top: (r.y + r.h - len) + "px", height: (len + 1) + "px" });
 }
 
 /* ---------- Sahne arayüzü oluştur ---------- */
@@ -499,11 +496,7 @@ function layout() {
   if (compact) y -= Math.min(vh * 0.12, Math.max(0, (vh - h) / 2 - 20));
   drawRect = { x, y, w, h };
 
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  placeVideos();
 
   for (const id in SCENES) SCENES[id].hotspots.forEach(hp => {
     const el = document.getElementById("hs-" + hp.id);
@@ -511,7 +504,6 @@ function layout() {
     el.style.top = (drawRect.y + hp.y * drawRect.h) + "px";
   });
   sizeCardHits();
-  drawActive(true);
 }
 function sizeCardHits() {
   document.querySelectorAll(".hs.live").forEach(el => {
@@ -567,10 +559,21 @@ addEventListener("orientationchange", () => setTimeout(layout, 200));
 // Sekme arka plandan dönünce oynatmayı sürdür
 document.addEventListener("visibilitychange", () => { if (!document.hidden && active && active.paused && cur && cur.v === active && (active.loop || active.currentTime < active.duration)) active.play().catch(() => {}); });
 
+// ?debug=1 → köşede oynatma bilgisi (atlanan kareler)
+if (params.get("debug")) {
+  const d = document.createElement("div");
+  d.style.cssText = "position:fixed;left:8px;bottom:8px;z-index:20;background:rgba(0,0,0,.75);color:#0f0;font:12px/1.4 monospace;padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre";
+  document.body.appendChild(d);
+  setInterval(() => {
+    const v = active; if (!v) return;
+    const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : {};
+    d.textContent = `${v.videoWidth}x${v.videoHeight}  ${Q === "h" ? "HQ" : "M"}\nkare: ${q.totalVideoFrames || "?"}  atlanan: ${q.droppedVideoFrames ?? "?"}\nekran: ${innerWidth}x${innerHeight} @${devicePixelRatio}`;
+  }, 500);
+}
+
 (async function init() {
   const rootId = Object.keys(SCENES).find(k => !SCENES[k].parent);
   layout();
-  requestAnimationFrame(tick);
   const prog = document.getElementById("prog");
   const v0 = vid(SCENES[rootId].loop, false, p => { prog.style.width = (p * 100) + "%"; });
   await ready(v0, 3);
