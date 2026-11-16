@@ -349,7 +349,7 @@ function play(seq, { loop = false, reverse = false, start = 0, onEnd = null } = 
       if (prev && prev !== v) { prev.pause(); prev.onended = null; }
     };
     if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(swap);
-    else v.addEventListener("playing", swap, { once: true });
+    v.addEventListener("playing", () => setTimeout(swap, 120), { once: true }); // yedek
   };
   v._src.then(() => { if (my !== token) return; if (v.readyState >= 1) go(); else v.addEventListener("loadedmetadata", go, { once: true }); });
 }
